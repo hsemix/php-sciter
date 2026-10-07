@@ -1,0 +1,14 @@
+{
+    "name": "hsemix/php-sciter",
+    "description": "Native Sciter desktop applications powered by PHP FFI",
+    "type": "library",
+    "require": {
+        "php": ">=8.2",
+        "ext-ffi": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Sciter\\": "src/"
+        }
+    }
+}
