@@ -552,7 +552,17 @@ typedef struct _ISciterAPI {
      * SciterReleaseGlobalAsset
      */
 
-    SCITER_UNUSED_FN api_175_182[8];
+    /*
+     * Slots 175..181
+     */
+    SCITER_UNUSED_FN api_175_181[7];
+
+    /*
+     * Slot 182
+     */
+    SBOOL (*SciterReleaseGlobalAsset)(
+        som_asset_t* asset
+    );
 
 
     /*

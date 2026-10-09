@@ -12,6 +12,9 @@ final class Runtime
     private const APP_LOOP = 1;
     private const APP_INIT = 2;
 
+    private const APP_STOP = 0;
+    private const APP_SHUTDOWN = 3;
+
     private SciterApi $sciter;
     private bool $initialized = false;
 
@@ -54,6 +57,19 @@ final class Runtime
         return $exec(
             self::APP_LOOP,
             0,
+            0
+        );
+    }
+
+    public function stop(int $exitCode = 0): void
+    {
+        if (!$this->initialized) {
+            return;
+        }
+
+        ($this->api()->SciterExec)(
+            self::APP_STOP,
+            $exitCode,
             0
         );
     }
