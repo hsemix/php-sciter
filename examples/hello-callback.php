@@ -59,6 +59,35 @@ $php
         'roles' => ['admin', 'cashier'],
     ])
 
+    ->method('getProfile', static fn(): array => [
+        'name' => 'Hamid',
+        'role' => 'admin',
+        'active' => true,
+        'balance' => 1250.75,
+        'permissions' => [
+            'users.read',
+            'users.create',
+            'reports.view',
+        ],
+        'address' => [
+            'city' => 'Kampala',
+            'country' => 'Uganda',
+        ],
+        'settings' => [
+            'notifications' => true,
+            'theme' => 'dark',
+        ],
+    ])
+
+    ->method('inspectProfile', static function (array $profile): array {
+        return [
+            'receivedName' => $profile['name'],
+            'permissionCount' => count($profile['permissions']),
+            'city' => $profile['address']['city'],
+            'notificationsEnabled' => $profile['settings']['notifications'],
+        ];
+    })
+
     ->register();
 
 echo "Global PHP asset registered: yes" . PHP_EOL;
@@ -214,6 +243,32 @@ $html = <<<'HTML'
 
         console.log(user.name);       // Hamid
         console.log(user.roles[0]);   // admin
+
+
+        const profile = php.getProfile();
+
+        console.log("Name:", profile.name);
+        console.log("Role:", profile.role);
+        console.log("Active:", profile.active);
+        console.log("Balance:", profile.balance);
+
+        console.log("Permissions:", JSON.stringify(profile.permissions));
+        console.log("City:", profile.address.city);
+        console.log("Theme:", profile.settings.theme);
+
+
+        const result = php.inspectProfile({
+            name: "Hamid",
+            permissions: ["read", "write", "delete"],
+            address: {
+                city: "Kampala"
+            },
+            settings: {
+                notifications: true
+            }
+        });
+
+        console.log(JSON.stringify(result));
 // });
 
 </script>
