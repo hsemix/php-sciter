@@ -63,6 +63,8 @@ try {
     $main->loadHtml($mainHtml)->show();
     $secondary->loadHtml($secondaryHtml)->show();
 
+    var_dump($secondary->isClosed());
+
     $runtime->run();
 } finally {
     $runtime->shutdown();

@@ -4,12 +4,24 @@ namespace Sciter;
 
 use FFI;
 use FFI\CData;
+use LogicException;
 use RuntimeException;
 
 final class Window
 {
     private const WINDOW_SET_STATE = 1;
     private const WINDOW_STATE_SHOWN = 2;
+    private const WINDOW_STATE_HIDDEN = 1;
+
+    private const WINDOW_STATE_CLOSED = 0;
+    private const WINDOW_STATE_MINIMIZED = 3;
+    private const WINDOW_STATE_MAXIMIZED = 4;
+    private const WINDOW_STATE_FULL_SCREEN = 5;
+    private const WINDOW_GET_STATE = 2;
+
+    private const SC_ENGINE_DESTROYED = 0x05;
+
+    private mixed $hostCallback = null;
 
     private const SW_CHILD = 1 << 0;
     private const SW_TITLEBAR = 1 << 1;
@@ -32,6 +44,10 @@ final class Window
         self::SW_CONTROLS;
 
     private WindowOptions $options;
+
+    private bool $closed = false;
+
+    private bool $closing = false;
 
     public function __construct(
         private Runtime $runtime,
@@ -65,6 +81,12 @@ final class Window
 
     public function create(): self
     {
+        if ($this->closed) {
+            throw new \LogicException(
+                'Cannot create a window that has already been closed.'
+            );
+        }
+
         if ($this->handle !== null) {
             return $this;
         }
@@ -111,6 +133,24 @@ final class Window
 
         $this->handle = $handle;
 
+        $this->hostCallback = function ($notification, $callbackParam): int {
+            if ((int) $notification->code === self::SC_ENGINE_DESTROYED) {
+                $this->closed = true;
+                $this->closing = false;
+                $this->handle = null;
+
+                echo "[Window] Native window destroyed\n";
+            }
+
+            return 0;
+        };
+
+        ($this->runtime->api()->SciterSetCallback)(
+            $this->handle,
+            $this->hostCallback,
+            null
+        );
+
         return $this;
     }
 
@@ -156,29 +196,93 @@ final class Window
         return $this;
     }
 
-    public function show(): self
+    public function state(): int
+    {
+        if ($this->handle === null) {
+            return self::WINDOW_STATE_CLOSED;
+        }
+
+        return (int) ($this->runtime->api()->SciterWindowExec)(
+            $this->handle,
+            self::WINDOW_GET_STATE,
+            0,
+            0
+        );
+    }
+
+    private function setState(int $state): self
     {
         $this->create();
 
-        $windowExec = $this->runtime
-            ->api()
-            ->SciterWindowExec;
-
-        $windowExec(
+        ($this->runtime->api()->SciterWindowExec)(
             $this->handle,
             self::WINDOW_SET_STATE,
-            self::WINDOW_STATE_SHOWN,
+            $state,
             0
         );
 
         return $this;
     }
 
-    public function handle(): CData
+    public function show(): self
     {
-        $this->create();
+        return $this->setState(self::WINDOW_STATE_SHOWN);
+    }
 
-        return $this->handle;
+    public function hide(): self
+    {
+        if ($this->handle === null) {
+            return $this;
+        }
+
+        return $this->setState(self::WINDOW_STATE_HIDDEN);
+    }
+
+    public function minimize(): self
+    {
+        return $this->setState(self::WINDOW_STATE_MINIMIZED);
+    }
+
+    public function maximize(): self
+    {
+        return $this->setState(self::WINDOW_STATE_MAXIMIZED);
+    }
+
+    public function fullscreen(): self
+    {
+        return $this->setState(self::WINDOW_STATE_FULL_SCREEN);
+    }
+
+    public function restore(): self
+    {
+        return $this->setState(self::WINDOW_STATE_SHOWN);
+    }
+
+    public function isClosed(): bool
+    {
+        return $this->closed;
+    }
+
+    public function isClosing(): bool
+    {
+        return $this->closing;
+    }
+
+    public function close(): void
+    {
+        if ($this->closed || $this->closing) {
+            return;
+        }
+
+        $this->closing = true;
+
+        try {
+            $this->setState(self::WINDOW_STATE_CLOSED);
+        } catch (\Throwable $exception) {
+            $this->closing = false;
+
+            throw $exception;
+        }
     }
 
     /**

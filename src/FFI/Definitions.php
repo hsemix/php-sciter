@@ -55,6 +55,18 @@ typedef struct tagRECT {
 
 typedef void (*SCITER_UNUSED_FN)(void);
 
+// Sciter notification structure
+typedef struct SCITER_CALLBACK_NOTIFICATION {
+    UINT code;
+    HWINDOW hwnd;
+} SCITER_CALLBACK_NOTIFICATION;
+
+// Host callback type
+typedef UINT (*SciterHostCallback)(
+    SCITER_CALLBACK_NOTIFICATION* notification,
+    void* callbackParam
+);
+
 
 /*
 |--------------------------------------------------------------------------
@@ -316,12 +328,29 @@ typedef struct _ISciterAPI {
         const void* baseUrl
     );
 
+    /*
+     * slot 8
+     */
+    void (*SciterSetCallback)(
+        HWINDOW hwnd,
+        SciterHostCallback callback,
+        void* callbackParam
+    );
 
     /*
-     * slots 8..29
+     * slot 9
+     */
+    SBOOL (*SciterSetMasterCSS)(
+        const unsigned char* utf8,
+        UINT numBytes
+    );
+
+
+    /*
+     * slots 10..29
      */
 
-    SCITER_UNUSED_FN api_08_29[22];
+    SCITER_UNUSED_FN api_10_29[20];
 
 
     /*
