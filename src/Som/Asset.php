@@ -38,13 +38,6 @@ final class Asset
 
     private bool $registered = false;
 
-    /**
-     * Retain globally registered assets while Sciter may use them.
-     *
-     * This is a temporary lifetime-management strategy.
-     */
-    private static array $registeredAssets = [];
-
     private int $references = 1;
 
     private MethodDispatcher $dispatcher;
@@ -323,7 +316,7 @@ final class Asset
         $this->registered = true;
 
         // Keep the native structures and callbacks alive.
-        self::$registeredAssets[spl_object_id($this)] = $this;
+        $this->runtime->retainAsset($this);
 
         return $this;
     }

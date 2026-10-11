@@ -6,6 +6,7 @@ use FFI;
 use FFI\CData;
 use RuntimeException;
 use Sciter\Som\Asset;
+use Sciter\Som\ExposedMethodResolver;
 
 final class Window
 {
@@ -154,9 +155,9 @@ final class Window
      * app.greet("Hamid");
      * app.add(10, 20);
      *
-     * @param array<string, callable> $methods
+     * @param array<string, callable>|object $methods
      */
-    public function expose(string $name, array $methods): self
+    public function expose(string $name, array|object $methods): self
     {
         if ($name === '') {
             throw new \InvalidArgumentException(
@@ -166,14 +167,32 @@ final class Window
 
         if (isset($this->exposedAssets[$name])) {
             throw new \LogicException(
-                "Asset '{$name}' is already exposed."
+                "Asset '{$name}' is already exposed on this window."
             );
+        }
+
+        // Convert an annotated PHP object into callable methods.
+        if (is_object($methods)) {
+            $methods = (new ExposedMethodResolver())->resolve($methods);
         }
 
         if ($methods === []) {
             throw new \InvalidArgumentException(
-                'At least one method must be provided.'
+                'At least one method must be exposed.'
             );
+        }
+
+        // Validate everything before creating the native asset.
+        foreach ($methods as $method => $callback) {
+            if (
+                !is_string($method) ||
+                $method === '' ||
+                !is_callable($callback)
+            ) {
+                throw new \InvalidArgumentException(
+                    'Exposed methods must have non-empty string names and callable values.'
+                );
+            }
         }
 
         $this->runtime->initialize();
@@ -181,12 +200,6 @@ final class Window
         $asset = new Asset($this->runtime, $name);
 
         foreach ($methods as $method => $callback) {
-            if (!is_string($method) || !is_callable($callback)) {
-                throw new \InvalidArgumentException(
-                    'Exposed methods must be named callables.'
-                );
-            }
-
             $asset->method($method, $callback);
         }
 
