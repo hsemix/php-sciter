@@ -4,38 +4,92 @@ namespace Sciter;
 
 use FFI;
 use FFI\CData;
+use LogicException;
 use RuntimeException;
-use Sciter\Som\Asset;
-use Sciter\Som\ExposedMethodResolver;
 
 final class Window
 {
-    private const SW_MAIN = 1 << 7;
-
     private const WINDOW_SET_STATE = 1;
     private const WINDOW_STATE_SHOWN = 2;
+    private const WINDOW_STATE_HIDDEN = 1;
+
+    private const WINDOW_STATE_CLOSED = 0;
+    private const WINDOW_STATE_MINIMIZED = 3;
+    private const WINDOW_STATE_MAXIMIZED = 4;
+    private const WINDOW_STATE_FULL_SCREEN = 5;
+    private const WINDOW_GET_STATE = 2;
+
+    private const SC_ENGINE_DESTROYED = 0x05;
+
+    private mixed $hostCallback = null;
+
+    private const SW_CHILD = 1 << 0;
+    private const SW_TITLEBAR = 1 << 1;
+    private const SW_RESIZEABLE = 1 << 2;
+    private const SW_CONTROLS = 1 << 3;
+    private const SW_MAIN = 1 << 7;
 
     private ?CData $handle = null;
 
-    /**
-     * SOM assets exposed through this window.
-     *
-     * Retain references to the assets for their lifetime.
-     *
-     * @var array<string, Asset>
-     */
-    private array $exposedAssets = [];
+
+    private const MAIN_WINDOW =
+    self::SW_TITLEBAR |
+        self::SW_RESIZEABLE |
+        self::SW_CONTROLS |
+        self::SW_MAIN;
+
+    private const SECONDARY_WINDOW =
+    self::SW_TITLEBAR |
+        self::SW_RESIZEABLE |
+        self::SW_CONTROLS;
+
+    private WindowOptions $options;
+
+    private bool $closed = false;
+
+    private bool $closing = false;
+
+    /** @var array<callable> */
+    private array $closeCallbacks = [];
 
     public function __construct(
         private Runtime $runtime,
-        private int $width = 900,
-        private int $height = 600,
-        private int $x = 100,
-        private int $y = 100,
-    ) {}
+        ?WindowOptions $options = null
+    ) {
+        $this->options = $options ?? new WindowOptions();
+    }
+
+    private function windowFlags(): int
+    {
+        $flags = 0;
+
+        if ($this->options->titlebar) {
+            $flags |= self::SW_TITLEBAR;
+        }
+
+        if ($this->options->resizable) {
+            $flags |= self::SW_RESIZEABLE;
+        }
+
+        if ($this->options->controls) {
+            $flags |= self::SW_CONTROLS;
+        }
+
+        if ($this->options->main) {
+            $flags |= self::SW_MAIN;
+        }
+
+        return $flags;
+    }
 
     public function create(): self
     {
+        if ($this->closed) {
+            throw new \LogicException(
+                'Cannot create a window that has already been closed.'
+            );
+        }
+
         if ($this->handle !== null) {
             return $this;
         }
@@ -47,15 +101,27 @@ final class Window
 
         $frame = $ffi->new('RECT');
 
-        $frame->left = $this->x;
-        $frame->top = $this->y;
-        $frame->right = $this->x + $this->width;
-        $frame->bottom = $this->y + $this->height;
+        $frame->left = $this->options->x;
+        $frame->top = $this->options->y;
 
-        $create = $api->SciterCreateWindow;
+        $frame->right = $this->options->x + $this->options->width;
+        $frame->bottom = $this->options->y + $this->options->height;
 
-        $handle = $create(
-            self::SW_MAIN,
+        $flags = $this->windowFlags();
+
+        fwrite(
+            STDERR,
+            sprintf(
+                "[Window] main=%s, resizable=%s, flags=%d (0x%X)\n",
+                $this->options->main ? 'true' : 'false',
+                $this->options->resizable ? 'true' : 'false',
+                $flags,
+                $flags
+            )
+        );
+
+        $handle = ($api->SciterCreateWindow)(
+            $flags,
             FFI::addr($frame),
             null,
             null,
@@ -69,6 +135,33 @@ final class Window
         }
 
         $this->handle = $handle;
+
+        $this->hostCallback = function ($notification, $callbackParam): int {
+            try {
+                if ((int) $notification->code === self::SC_ENGINE_DESTROYED) {
+                    if (!$this->closed) {
+                        $this->closed = true;
+                        $this->closing = false;
+                        $this->handle = null;
+
+                        $this->notifyClosed();
+                    }
+                }
+            } catch (\Throwable $exception) {
+                error_log(
+                    '[Window] Native callback failed: '
+                        . $exception->getMessage()
+                );
+            }
+
+            return 0;
+        };
+
+        ($this->runtime->api()->SciterSetCallback)(
+            $this->handle,
+            $this->hostCallback,
+            null
+        );
 
         return $this;
     }
@@ -115,29 +208,93 @@ final class Window
         return $this;
     }
 
-    public function show(): self
+    public function state(): int
+    {
+        if ($this->handle === null) {
+            return self::WINDOW_STATE_CLOSED;
+        }
+
+        return (int) ($this->runtime->api()->SciterWindowExec)(
+            $this->handle,
+            self::WINDOW_GET_STATE,
+            0,
+            0
+        );
+    }
+
+    private function setState(int $state): self
     {
         $this->create();
 
-        $windowExec = $this->runtime
-            ->api()
-            ->SciterWindowExec;
-
-        $windowExec(
+        ($this->runtime->api()->SciterWindowExec)(
             $this->handle,
             self::WINDOW_SET_STATE,
-            self::WINDOW_STATE_SHOWN,
+            $state,
             0
         );
 
         return $this;
     }
 
-    public function handle(): CData
+    public function show(): self
     {
-        $this->create();
+        return $this->setState(self::WINDOW_STATE_SHOWN);
+    }
 
-        return $this->handle;
+    public function hide(): self
+    {
+        if ($this->handle === null) {
+            return $this;
+        }
+
+        return $this->setState(self::WINDOW_STATE_HIDDEN);
+    }
+
+    public function minimize(): self
+    {
+        return $this->setState(self::WINDOW_STATE_MINIMIZED);
+    }
+
+    public function maximize(): self
+    {
+        return $this->setState(self::WINDOW_STATE_MAXIMIZED);
+    }
+
+    public function fullscreen(): self
+    {
+        return $this->setState(self::WINDOW_STATE_FULL_SCREEN);
+    }
+
+    public function restore(): self
+    {
+        return $this->setState(self::WINDOW_STATE_SHOWN);
+    }
+
+    public function isClosed(): bool
+    {
+        return $this->closed;
+    }
+
+    public function isClosing(): bool
+    {
+        return $this->closing;
+    }
+
+    public function close(): void
+    {
+        if ($this->closed || $this->closing) {
+            return;
+        }
+
+        $this->closing = true;
+
+        try {
+            $this->setState(self::WINDOW_STATE_CLOSED);
+        } catch (\Throwable $exception) {
+            $this->closing = false;
+
+            throw $exception;
+        }
     }
 
     /**
@@ -159,54 +316,38 @@ final class Window
      */
     public function expose(string $name, array|object $methods): self
     {
-        if ($name === '') {
-            throw new \InvalidArgumentException(
-                'Exposed asset name cannot be empty.'
-            );
-        }
+        $this->runtime->expose($name, $methods);
 
-        if (isset($this->exposedAssets[$name])) {
+        return $this;
+    }
+
+    public function onClose(callable $callback): self
+    {
+        if ($this->closed) {
             throw new \LogicException(
-                "Asset '{$name}' is already exposed on this window."
+                'Cannot register a close callback on a closed window.'
             );
         }
 
-        // Convert an annotated PHP object into callable methods.
-        if (is_object($methods)) {
-            $methods = (new ExposedMethodResolver())->resolve($methods);
-        }
+        $this->closeCallbacks[] = $callback;
 
-        if ($methods === []) {
-            throw new \InvalidArgumentException(
-                'At least one method must be exposed.'
-            );
-        }
+        return $this;
+    }
 
-        // Validate everything before creating the native asset.
-        foreach ($methods as $method => $callback) {
-            if (
-                !is_string($method) ||
-                $method === '' ||
-                !is_callable($callback)
-            ) {
-                throw new \InvalidArgumentException(
-                    'Exposed methods must have non-empty string names and callable values.'
+    private function notifyClosed(): void
+    {
+        $callbacks = $this->closeCallbacks;
+        $this->closeCallbacks = [];
+
+        foreach ($callbacks as $callback) {
+            try {
+                $callback($this);
+            } catch (\Throwable $exception) {
+                error_log(
+                    '[Window] Close callback failed: '
+                        . $exception->getMessage()
                 );
             }
         }
-
-        $this->runtime->initialize();
-
-        $asset = new Asset($this->runtime, $name);
-
-        foreach ($methods as $method => $callback) {
-            $asset->method($method, $callback);
-        }
-
-        $asset->register();
-
-        $this->exposedAssets[$name] = $asset;
-
-        return $this;
     }
 }
