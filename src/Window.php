@@ -4,8 +4,8 @@ namespace Sciter;
 
 use FFI;
 use FFI\CData;
-use LogicException;
 use RuntimeException;
+use Sciter\Events\EventDispatcher;
 
 final class Window
 {
@@ -51,6 +51,8 @@ final class Window
 
     /** @var array<callable> */
     private array $closeCallbacks = [];
+
+    private ?EventDispatcher $events = null;
 
     public function __construct(
         private Runtime $runtime,
@@ -144,7 +146,7 @@ final class Window
                         $this->closing = false;
                         $this->handle = null;
 
-                        $this->notifyClosed();
+                        $this->events()->emit('close', $this);
                     }
                 }
             } catch (\Throwable $exception) {
@@ -323,13 +325,7 @@ final class Window
 
     public function onClose(callable $callback): self
     {
-        if ($this->closed) {
-            throw new \LogicException(
-                'Cannot register a close callback on a closed window.'
-            );
-        }
-
-        $this->closeCallbacks[] = $callback;
+        $this->on('close', $callback);
 
         return $this;
     }
@@ -349,5 +345,37 @@ final class Window
                 );
             }
         }
+    }
+
+    private function events(): EventDispatcher
+    {
+        return $this->events ??= new EventDispatcher();
+    }
+
+    public function on(string $event, callable $listener): int
+    {
+        if ($event === 'close' && $this->closed) {
+            throw new \LogicException(
+                'Cannot register a close listener on a closed window.'
+            );
+        }
+
+        return $this->events()->on($event, $listener);
+    }
+
+    public function off(string $event, int $listenerId): bool
+    {
+        return $this->events()->off($event, $listenerId);
+    }
+
+    public function once(string $event, callable $listener): int
+    {
+        if ($event === 'close' && $this->closed) {
+            throw new \LogicException(
+                'Cannot register a close listener on a closed window.'
+            );
+        }
+
+        return $this->events()->once($event, $listener);
     }
 }
