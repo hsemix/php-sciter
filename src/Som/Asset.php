@@ -90,26 +90,20 @@ final class Asset
         $this->addRefCallback = function ($thing): int {
             $this->references++;
 
-            fwrite(
-                STDERR,
-                "[SOM] add_ref => {$this->references}\n"
-            );
+            $this->log("add_ref => {$this->references}");
 
             return $this->references;
         };
 
         $this->releaseCallback = function ($thing): int {
             if ($this->references <= 0) {
-                fwrite(STDERR, "[SOM] Unexpected release at zero references\n");
+                $this->log('WARNING: release called with zero references');
                 return 0;
             }
 
             $this->references--;
 
-            fwrite(
-                STDERR,
-                "[SOM] release => {$this->references}\n"
-            );
+            $this->log("release => {$this->references}");
 
             return $this->references;
         };
@@ -125,7 +119,7 @@ final class Asset
         };
 
         $this->getPassportCallback = function ($thing) {
-            fwrite(STDERR, "[SOM] get_passport\n");
+            $this->log('get_passport');
 
             return FFI::addr($this->passport);
         };
@@ -315,6 +309,10 @@ final class Asset
 
         $this->registered = true;
 
+        $this->log(
+            "registered (references={$this->references})"
+        );
+
         // Keep the native structures and callbacks alive.
         $this->runtime->retainAsset($this);
 
@@ -339,11 +337,16 @@ final class Asset
 
         $this->registered = false;
 
-        /*
-     * Deliberately keep the asset in our static registry for now.
-     *
-     * We don't yet know whether Sciter retains references to
-     * the asset during JavaScript runtime shutdown.
-     */
+        $this->log(
+            "unregistered (references={$this->references})"
+        );
+    }
+
+    private function log(string $message): void
+    {
+        // if (!$this->runtime->debug()) {
+        //     return;
+        // }
+        fwrite(STDERR, sprintf("[SOM:%s] %s\n", $this->name, $message));
     }
 }

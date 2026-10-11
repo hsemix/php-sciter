@@ -127,6 +127,17 @@ final class Runtime
 
         fwrite(STDERR, "[Runtime] Starting Sciter shutdown\n");
 
+        foreach ($this->assets as $asset) {
+            fwrite(
+                STDERR,
+                sprintf(
+                    "[Runtime] Before unregister: %s => %d\n",
+                    $asset->name(),
+                    $asset->references()
+                )
+            );
+        }
+
         /*
          * 1. Unregister SOM assets while Sciter is initialized.
          *
@@ -147,6 +158,17 @@ final class Runtime
             STDERR,
             "[Runtime] Sciter shutdown returned: {$result}\n"
         );
+
+        foreach ($this->assets as $asset) {
+            fwrite(
+                STDERR,
+                sprintf(
+                    "[Runtime] After shutdown: %s => %d\n",
+                    $asset->name(),
+                    $asset->references()
+                )
+            );
+        }
 
         /*
          * 3. Mark the runtime as shut down.
