@@ -17,12 +17,13 @@ final class Application
         int $x = 100,
         int $y = 100,
     ): Window {
-        return new Window(
-            runtime: $this->runtime,
-            width: $width,
-            height: $height,
-            x: $x,
-            y: $y,
+        return $this->runtime->createWindow(
+            new WindowOptions(
+                width: $width,
+                height: $height,
+                x: $x,
+                y: $y,
+            )
         );
     }
 

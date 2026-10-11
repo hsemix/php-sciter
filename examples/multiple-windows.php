@@ -7,6 +7,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 use Sciter\Attributes\Expose;
 use Sciter\Runtime;
 use Sciter\Window;
+use Sciter\WindowOptions;
 
 final class SharedController
 {
@@ -99,19 +100,23 @@ HTML;
 
 $window1 = new Window(
     $runtime,
-    width: 600,
-    height: 400,
-    x: 100,
-    y: 100
+    new WindowOptions(
+        width: 600,
+        height: 400,
+        x: 100,
+        y: 100
+    )
 );
 
 $window2 = new Window(
     $runtime,
-    width: 600,
-    height: 400,
-    x: 750,
-    y: 100,
-    main: false
+    new WindowOptions(
+        width: 600,
+        height: 400,
+        x: 750,
+        y: 100,
+        main: false
+    )
 );
 
 try {

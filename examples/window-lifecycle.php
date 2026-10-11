@@ -165,6 +165,17 @@ HTML);
 $main->show();
 $secondary->show();
 
-$runtime->run();
+$secondary->onClose(function ($window): void {
+    echo '[PHP] Secondary window onClose fired' . PHP_EOL;
+    echo '[PHP] isClosed: '
+        . ($window->isClosed() ? 'YES' : 'NO')
+        . PHP_EOL;
+});
+
+try {
+    $runtime->run();
+} finally {
+    $runtime->shutdown();
+}
 
 echo '[PHP] Runtime finished' . PHP_EOL;

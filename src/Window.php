@@ -49,6 +49,9 @@ final class Window
 
     private bool $closing = false;
 
+    /** @var array<callable> */
+    private array $closeCallbacks = [];
+
     public function __construct(
         private Runtime $runtime,
         ?WindowOptions $options = null
@@ -134,12 +137,21 @@ final class Window
         $this->handle = $handle;
 
         $this->hostCallback = function ($notification, $callbackParam): int {
-            if ((int) $notification->code === self::SC_ENGINE_DESTROYED) {
-                $this->closed = true;
-                $this->closing = false;
-                $this->handle = null;
+            try {
+                if ((int) $notification->code === self::SC_ENGINE_DESTROYED) {
+                    if (!$this->closed) {
+                        $this->closed = true;
+                        $this->closing = false;
+                        $this->handle = null;
 
-                echo "[Window] Native window destroyed\n";
+                        $this->notifyClosed();
+                    }
+                }
+            } catch (\Throwable $exception) {
+                error_log(
+                    '[Window] Native callback failed: '
+                        . $exception->getMessage()
+                );
             }
 
             return 0;
@@ -307,5 +319,35 @@ final class Window
         $this->runtime->expose($name, $methods);
 
         return $this;
+    }
+
+    public function onClose(callable $callback): self
+    {
+        if ($this->closed) {
+            throw new \LogicException(
+                'Cannot register a close callback on a closed window.'
+            );
+        }
+
+        $this->closeCallbacks[] = $callback;
+
+        return $this;
+    }
+
+    private function notifyClosed(): void
+    {
+        $callbacks = $this->closeCallbacks;
+        $this->closeCallbacks = [];
+
+        foreach ($callbacks as $callback) {
+            try {
+                $callback($this);
+            } catch (\Throwable $exception) {
+                error_log(
+                    '[Window] Close callback failed: '
+                        . $exception->getMessage()
+                );
+            }
+        }
     }
 }

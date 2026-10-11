@@ -4,13 +4,16 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 
 use Sciter\Runtime;
 use Sciter\Window;
+use Sciter\WindowOptions;
 
 $runtime = new Runtime();
 
 $window = new Window(
-    runtime: $runtime,
-    width: 900,
-    height: 600
+    $runtime,
+    new WindowOptions(
+        width: 900,
+        height: 600
+    )
 );
 
 $window
