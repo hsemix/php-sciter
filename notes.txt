@@ -1,0 +1,4 @@
+clang++ -std=c++17 -dynamiclib \
+    -I "$HOME/Downloads/sciter-js-sdk-main-test/sciter-js-sdk-main/include" \
+    tests/native/som_probe.cpp \
+    -o tests/native/libsom_probe.dylib
