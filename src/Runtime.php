@@ -250,4 +250,12 @@ final class Runtime
 
         return $this;
     }
+
+    public function createWindow(?WindowOptions $options = null): Window
+    {
+        return new Window(
+            $this,
+            $options ?? new WindowOptions()
+        );
+    }
 }

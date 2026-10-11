@@ -31,14 +31,37 @@ final class Window
         self::SW_RESIZEABLE |
         self::SW_CONTROLS;
 
+    private WindowOptions $options;
+
     public function __construct(
         private Runtime $runtime,
-        private int $width = 900,
-        private int $height = 600,
-        private int $x = 100,
-        private int $y = 100,
-        private bool $main = true
-    ) {}
+        ?WindowOptions $options = null
+    ) {
+        $this->options = $options ?? new WindowOptions();
+    }
+
+    private function windowFlags(): int
+    {
+        $flags = 0;
+
+        if ($this->options->titlebar) {
+            $flags |= self::SW_TITLEBAR;
+        }
+
+        if ($this->options->resizable) {
+            $flags |= self::SW_RESIZEABLE;
+        }
+
+        if ($this->options->controls) {
+            $flags |= self::SW_CONTROLS;
+        }
+
+        if ($this->options->main) {
+            $flags |= self::SW_MAIN;
+        }
+
+        return $flags;
+    }
 
     public function create(): self
     {
@@ -53,16 +76,24 @@ final class Window
 
         $frame = $ffi->new('RECT');
 
-        $frame->left = $this->x;
-        $frame->top = $this->y;
-        $frame->right = $this->x + $this->width;
-        $frame->bottom = $this->y + $this->height;
+        $frame->left = $this->options->x;
+        $frame->top = $this->options->y;
 
-        $create = $api->SciterCreateWindow;
+        $frame->right = $this->options->x + $this->options->width;
+        $frame->bottom = $this->options->y + $this->options->height;
 
-        $flags = $this->main
-            ? self::MAIN_WINDOW
-            : self::SECONDARY_WINDOW;
+        $flags = $this->windowFlags();
+
+        fwrite(
+            STDERR,
+            sprintf(
+                "[Window] main=%s, resizable=%s, flags=%d (0x%X)\n",
+                $this->options->main ? 'true' : 'false',
+                $this->options->resizable ? 'true' : 'false',
+                $flags,
+                $flags
+            )
+        );
 
         $handle = ($api->SciterCreateWindow)(
             $flags,
