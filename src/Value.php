@@ -444,6 +444,97 @@ final class Value
         }
     }
 
+    /**
+     * Convert a Sciter T_MAP into an associative PHP array.
+     */
+    public function toMap(CData $valuePtr): array
+    {
+        $ffi = $this->runtime->ffi();
+        $api = $this->runtime->api();
+
+        $count = $ffi->new('int32_t[1]');
+
+        $status = ($api->ValueElementsCount)($valuePtr, $count);
+
+        if ($status !== self::OK) {
+            throw new \RuntimeException(
+                "ValueElementsCount() failed: {$status}"
+            );
+        }
+
+        $result = [];
+
+        for ($i = 0; $i < $count[0]; $i++) {
+            $key = $ffi->new('VALUE');
+            $item = $ffi->new('VALUE');
+
+            ($api->ValueInit)(FFI::addr($key));
+            ($api->ValueInit)(FFI::addr($item));
+
+            try {
+                $status = ($api->ValueNthElementKey)(
+                    $valuePtr,
+                    $i,
+                    FFI::addr($key)
+                );
+
+                if ($status !== self::OK) {
+                    throw new \RuntimeException(
+                        "ValueNthElementKey() failed at index {$i}: {$status}"
+                    );
+                }
+
+                $status = ($api->ValueNthElementValue)(
+                    $valuePtr,
+                    $i,
+                    FFI::addr($item)
+                );
+
+                if ($status !== self::OK) {
+                    throw new \RuntimeException(
+                        "ValueNthElementValue() failed at index {$i}: {$status}"
+                    );
+                }
+
+                $keyValue = $this->toPhp(FFI::addr($key));
+
+                if (!is_string($keyValue) && !is_int($keyValue)) {
+                    throw new \UnexpectedValueException(
+                        'Unsupported Sciter map key type: '
+                        . get_debug_type($keyValue)
+                    );
+                }
+
+                $result[$keyValue] = $this->toPhp(FFI::addr($item));
+            } finally {
+                ($api->ValueClear)(FFI::addr($item));
+                ($api->ValueClear)(FFI::addr($key));
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Flatten a PHP object into the array shared with the UI.
+     *
+     * JsonSerializable wins, then Traversable, then public properties.
+     */
+    private function objectToArray(object $object): array
+    {
+        if ($object instanceof \JsonSerializable) {
+            $data = $object->jsonSerialize();
+
+            return is_array($data) ? $data : ['value' => $data];
+        }
+
+        if ($object instanceof \Traversable) {
+            return iterator_to_array($object);
+        }
+
+        return get_object_vars($object);
+    }
+
     public function toObject(CData $valuePtr): mixed
     {
         $ffi = $this->runtime->ffi();
@@ -610,6 +701,7 @@ final class Value
             self::TYPE_STRING => $this->toString($valuePtr),
 
             self::TYPE_ARRAY => $this->toArray($valuePtr),
+            self::TYPE_MAP => $this->toMap($valuePtr),
 
             self::TYPE_OBJECT => $this->toObject($valuePtr),
 
@@ -632,7 +724,16 @@ final class Value
             is_int($value) => $this->setInt($valuePtr, $value),
             is_float($value) => $this->setFloat($valuePtr, $value),
             is_bool($value) => $this->setBool($valuePtr, $value),
-            is_array($value) => $this->setArray($valuePtr, $value),
+            is_array($value) => array_is_list($value)
+                ? $this->setArray($valuePtr, $value)
+                : $this->setMap($valuePtr, $value),
+            is_object($value) => $this->setMap(
+                $valuePtr,
+                $this->objectToArray($value)
+            ),
+            default => throw new \InvalidArgumentException(
+                'Unsupported PHP value type: ' . get_debug_type($value)
+            ),
         };
     }
 }
