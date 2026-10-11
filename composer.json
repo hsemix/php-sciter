@@ -2,6 +2,7 @@
     "name": "hsemix/php-sciter",
     "description": "Native Sciter desktop applications powered by PHP FFI",
     "type": "library",
+    "license": "MIT",
     "require": {
         "php": ">=8.2",
         "ext-ffi": "*"
