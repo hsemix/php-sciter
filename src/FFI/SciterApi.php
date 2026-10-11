@@ -26,10 +26,7 @@ final class SciterApi
             );
         }
 
-        $this->ffi = FFI::cdef(
-            Definitions::cdef(),
-            $library
-        );
+        $this->ffi = Definitions::load($library);
 
         $this->api = $this->ffi->SciterAPI();
 

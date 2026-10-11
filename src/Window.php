@@ -149,6 +149,23 @@ final class Window
                         $this->events()->emit('close', $this);
                     }
                 }
+
+                if ((int) $notification->code === 0x06) {
+                    echo "[Host] Posted notification received\n";
+
+                    $posted = $this->runtime->ffi()->cast(
+                        'SCN_POSTED_NOTIFICATION*',
+                        $notification
+                    );
+
+                    printf(
+                        "[Host] wparam=%d, lparam=%d\n",
+                        (int) $posted->wparam,
+                        (int) $posted->lparam
+                    );
+
+                    return 0;
+                }
             } catch (\Throwable $exception) {
                 error_log(
                     '[Window] Native callback failed: '
@@ -166,6 +183,26 @@ final class Window
         );
 
         return $this;
+    }
+
+    public function testPostedCallback(): void
+    {
+        if ($this->isClosed() || $this->isClosing()) {
+            throw new \LogicException(
+                'Cannot post a callback to a closed window.'
+            );
+        }
+
+        echo "[Test] Posting callback...\n";
+
+        $result = ($this->runtime->api()->SciterPostCallback)(
+            $this->handle,
+            123,
+            456,
+            1000
+        );
+
+        echo "[Test] PostCallback returned: {$result}\n";
     }
 
     public function loadHtml(string $html): self
