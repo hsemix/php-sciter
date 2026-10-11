@@ -16,6 +16,18 @@ $window = $runtime->createWindow(
     )
 );
 
+$window->on('minimize.requested', function () {
+    echo "[Event] Minimize requested\n";
+});
+
+$window->on('maximize.requested', function () {
+    echo "[Event] Maximize requested\n";
+});
+
+$window->once('restore.requested', function () {
+    echo "[Event] Restore requested (once)\n";
+});
+
 $runtime->expose('windowControls', [
     'minimize' => function () use ($window): int {
         $window->minimize();
