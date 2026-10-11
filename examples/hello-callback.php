@@ -15,6 +15,8 @@ $api = $runtime->api();
 
 $values = new Value($runtime);
 
+$value = new Value($runtime);
+
 const SW_MAIN = 1 << 7;
 
 
@@ -33,24 +35,31 @@ echo "greet atom: {$greetName}" . PHP_EOL;
 
 $php = new Asset($runtime, 'php');
 
-$php->method(
-    'greet',
-    function ($argc, $argv, $result) use ($values): bool {
-        $name = $values->toString($argv);
+$php
+    ->method('greet', fn(string $name): string => "Hello, {$name}!")
+    ->method('add', fn(int $a, int $b): int => $a + $b)
+    ->method('multiply', fn(float $a, float $b): float => $a * $b)
+    ->method('negate', fn(bool $value): bool => !$value)
+    ->method('returnNull', fn(): mixed => null)
+    ->method('isNull', fn(?string $value): bool => $value === null)
 
-        echo "PHP received: {$name}" . PHP_EOL;
+    ->method(
+        'getNumbers',
+        fn(): array => [10, 20, 30, 40]
+    )
+    ->method(
+        'sumNumbers',
+        fn(array $numbers): int => array_sum($numbers)
+    )
 
-        $values->setString(
-            $result,
-            "Hello {$name}, from PHP!"
-        );
+    ->method('getUser', fn(): array => [
+        'id' => 1,
+        'name' => 'Hamid',
+        'active' => true,
+        'roles' => ['admin', 'cashier'],
+    ])
 
-        return true;
-    },
-    1
-);
-
-$php->register();
+    ->register();
 
 echo "Global PHP asset registered: yes" . PHP_EOL;
 
@@ -141,24 +150,71 @@ $html = <<<'HTML'
 
 <script type="module">
 
-const result = document.$("#result");
+// const result = document.$("#result");
 
-document.$("#call-php").on("click", () => {
+// document.$("#call-php").on("click", () => {
 
-    // const message = php.greet("Hamid 👋");
+    try {
+        const greeting = php.greet("Hamid");
 
-    // console.log("PHP returned:", message);
+        console.log(greeting);
 
-    // document.$("#result").text = message;
+        // document.querySelector("#result").textContent = greeting;
 
-    // const message = php.greet("Hamid 👋");
+        // const sum = php.add(10, 20);
 
-    // console.log("PHP returned:", message);
+        // console.log("Sum:", sum);
 
-    // result.innerText = message;
+        // document.querySelector("#result").textContent =
+        //     `Greeting: ${php.greet("Hamid")} | Sum: ${sum}`;
 
-    result.innerText = "SOM callback deliberately skipped";
-});
+        // for (let i = 0; i < 100; i++) {
+        //     const greeting = php.greet("Hamid");
+        //     const sum = php.add(i, 20);
+
+        //     if (greeting !== "Hello, Hamid!" || sum !== i + 20) {
+        //         throw new Error(`Unexpected result at iteration ${i}`);
+        //     }
+        // }
+
+        // console.log("All 100 iterations passed.");
+
+        const product = php.multiply(2.5, 4.25);
+        const negated = php.negate(true);
+
+        console.log("Product:", product);
+        console.log("Negated:", negated);
+
+        document.querySelector("#result").textContent =
+            `Greeting: ${php.greet("Hamid")} | ` +
+            `Sum: ${php.add(10, 20)} | ` +
+            `Product: ${product} | ` +
+            `Negated: ${negated}`;
+            } catch (error) {
+                console.error(error);
+            }
+
+        const a = php.returnNull();
+        const b = php.isNull(null);
+        const c = php.isNull(undefined);
+
+        console.log("Returned null:", a === null);
+        console.log("Accepted null:", b);
+        console.log("Accepted undefined:", c);
+
+
+        const numbers = php.getNumbers();
+
+        console.log("Numbers:", JSON.stringify(numbers));
+        console.log("Sum:", php.sumNumbers([10, 20, 30, 40]));
+        console.log("Third number:", numbers[2]);
+
+
+        const user = php.getUser();
+
+        console.log(user.name);       // Hamid
+        console.log(user.roles[0]);   // admin
+// });
 
 </script>
 
@@ -215,9 +271,26 @@ echo "Starting application..." . PHP_EOL;
 try {
     $runtime->run();
 } finally {
+    // echo "Sciter event loop finished." . PHP_EOL;
+
+    // // $php->unregister();
+
+    // echo "Leaving SOM asset registered for shutdown test." . PHP_EOL;
+
+
     echo "Sciter event loop finished." . PHP_EOL;
 
-    // $php->unregister();
+    echo "Releasing SOM asset..." . PHP_EOL;
+    $php->unregister();
 
-    echo "Leaving SOM asset registered for shutdown test." . PHP_EOL;
+    echo "Shutting down Sciter..." . PHP_EOL;
+    $runtime->shutdown();
+
+    echo "Shutdown sequence completed." . PHP_EOL;
+
+    echo "Final SOM references: {$php->references()}" . PHP_EOL;
 }
+
+register_shutdown_function(static function (): void {
+    fwrite(STDERR, "[PHP] Shutdown function called\n");
+});

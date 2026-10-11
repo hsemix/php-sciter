@@ -103,4 +103,26 @@ final class Runtime
             ),
         };
     }
+
+    public function shutdown(): void
+    {
+        if (!$this->initialized) {
+            return;
+        }
+
+        fwrite(STDERR, "[Runtime] Starting Sciter shutdown\n");
+
+        $result = ($this->api()->SciterExec)(
+            self::APP_SHUTDOWN,
+            0,
+            0
+        );
+
+        fwrite(
+            STDERR,
+            "[Runtime] Sciter shutdown returned: {$result}\n"
+        );
+
+        $this->initialized = false;
+    }
 }

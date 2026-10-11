@@ -22,6 +22,8 @@ typedef int                SBOOL;
 
 typedef unsigned long long UINT64;
 typedef unsigned long      size_t;
+typedef signed int int32_t;
+typedef double FLOAT_VALUE;
 
 typedef void* LPVOID;
 typedef void* HWINDOW;
@@ -87,6 +89,7 @@ typedef VALUE SCITER_VALUE;
 */
 
 typedef unsigned short WCHAR16;
+typedef unsigned short uint16_t;
 
 
 /*
@@ -205,6 +208,12 @@ struct som_passport_t {
 
     void* reserved;
 };
+
+typedef int (*KeyValueCallback)(
+    void* param,
+    const VALUE* pkey,
+    const VALUE* pval
+);
 
 
 /*
@@ -461,8 +470,76 @@ typedef struct _ISciterAPI {
      * ValueIsNativeFunctor
      */
 
-    SCITER_UNUSED_FN api_value_136_155[20];
+    UINT (*ValueIntData)(
+        const VALUE* pval,
+        int32_t* pData
+    );
 
+    UINT (*ValueIntDataSet)(
+        VALUE* pval,
+        int32_t data,
+        UINT type,
+        UINT units
+    );
+
+    /*
+    * Preserve the two Int64 function-pointer slots.
+    * We'll implement Int64 support later.
+    */
+    SCITER_UNUSED_FN api_value_int64[2];
+
+    UINT (*ValueFloatData)(
+        const VALUE* pval,
+        double* pData
+    );
+
+    UINT (*ValueFloatDataSet)(
+        VALUE* pval,
+        double data,
+        UINT type,
+        UINT units
+    );
+
+    SCITER_UNUSED_FN api_value_142_143[2];
+
+    UINT (*ValueElementsCount)(
+        const VALUE* pval,
+        int32_t* pn
+    );
+
+    UINT (*ValueNthElementValue)(
+        const VALUE* pval,
+        int32_t n,
+        VALUE* pretval
+    );
+
+    UINT (*ValueNthElementValueSet)(
+        VALUE* pval,
+        int32_t n,
+        const VALUE* pval_to_set
+    );
+
+    UINT (*ValueNthElementKey)(
+        const VALUE* pval,
+        int32_t n,
+        VALUE* pretval
+    );
+
+    /* Slot 148 */
+    UINT (*ValueEnumElements)(
+        const VALUE* pval,
+        KeyValueCallback* penum,
+        void* param
+    );
+
+    /* Slot 149 */
+    UINT (*ValueSetValueToKey)(
+        VALUE* pval,
+        const VALUE* pkey,
+        const VALUE* pval_to_set
+    );
+
+    SCITER_UNUSED_FN api_value_150_155[6];
 
     /*
     |--------------------------------------------------------------------------

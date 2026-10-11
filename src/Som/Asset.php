@@ -2,8 +2,10 @@
 
 namespace Sciter\Som;
 
+use Closure;
 use FFI;
 use FFI\CData;
+use ReflectionFunction;
 use Sciter\Runtime;
 
 final class Asset
@@ -43,12 +45,17 @@ final class Asset
      */
     private static array $registeredAssets = [];
 
+    private int $references = 1;
+
+    private MethodDispatcher $dispatcher;
+
 
     public function __construct(
         private Runtime $runtime,
         private string $name
     ) {
         $this->atom = $this->resolveAtom($name);
+        $this->dispatcher = new MethodDispatcher($runtime);
 
         $this->createPassport();
         $this->createAssetClass();
@@ -87,37 +94,46 @@ final class Asset
     {
         $ffi = $this->runtime->ffi();
 
-        /*
-         * SOM reference counting.
-         *
-         * PHP owns the actual Asset object for now, so these
-         * callbacks simply acknowledge the operation.
-         */
-        $this->addRefCallback = static function ($thing): int {
-            return 1;
+        $this->addRefCallback = function ($thing): int {
+            $this->references++;
+
+            fwrite(
+                STDERR,
+                "[SOM] add_ref => {$this->references}\n"
+            );
+
+            return $this->references;
         };
 
-        $this->releaseCallback = static function ($thing): int {
-            return 1;
+        $this->releaseCallback = function ($thing): int {
+            if ($this->references <= 0) {
+                fwrite(STDERR, "[SOM] Unexpected release at zero references\n");
+                return 0;
+            }
+
+            $this->references--;
+
+            fwrite(
+                STDERR,
+                "[SOM] release => {$this->references}\n"
+            );
+
+            return $this->references;
         };
 
-        /*
-         * We don't expose additional interfaces yet.
-         */
         $this->getInterfaceCallback = static function (
             $thing,
             $name,
             $out
         ): int {
+            fwrite(STDERR, "[SOM] get_interface\n");
+
             return 0;
         };
 
-        /*
-         * Passport support comes in the next step.
-         *
-         * Returning NULL here is intentional for now.
-         */
         $this->getPassportCallback = function ($thing) {
+            fwrite(STDERR, "[SOM] get_passport\n");
+
             return FFI::addr($this->passport);
         };
 
@@ -134,6 +150,11 @@ final class Asset
 
         $this->assetClass->asset_get_passport =
             $this->getPassportCallback;
+    }
+
+    public function references(): int
+    {
+        return $this->references;
     }
 
     private function createAsset(): void
@@ -178,8 +199,14 @@ final class Asset
     public function method(
         string $name,
         callable $callback,
-        int $params = 1
+        ?int $params = null
     ): self {
+
+        $reflection = new \ReflectionFunction(
+            Closure::fromCallable($callback)
+        );
+
+        $params ??= $reflection->getNumberOfParameters();
 
         if ($this->registered) {
             throw new \LogicException(
@@ -236,28 +263,20 @@ final class Asset
         foreach ($this->methodDefinitions as $definition) {
             $handler = $definition['callback'];
 
+            $dispatcher = $this->dispatcher;
+
             $nativeCallback = static function (
                 $thing,
                 int $argc,
                 $argv,
                 $result
-            ) use ($handler): int {
-                try {
-                    return $handler(
-                        $argc,
-                        $argv,
-                        $result
-                    ) ? 1 : 0;
-                } catch (\Throwable $e) {
-                    error_log(
-                        '[Sciter SOM] ' .
-                            $e::class .
-                            ': ' .
-                            $e->getMessage()
-                    );
-
-                    return 0;
-                }
+            ) use ($handler, $dispatcher): int {
+                return $dispatcher->dispatch(
+                    $handler,
+                    $argc,
+                    $argv,
+                    $result
+                ) ? 1 : 0;
             };
 
             $methods[$index]->reserved = null;
