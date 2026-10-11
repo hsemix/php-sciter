@@ -7,6 +7,7 @@ use FFI\CData;
 use RuntimeException;
 use Sciter\FFI\SciterApi;
 use Sciter\Som\Asset;
+use Sciter\Som\ExposedMethodResolver;
 
 final class Runtime
 {
@@ -25,9 +26,12 @@ final class Runtime
      * Retaining these objects also keeps their native structures
      * and PHP FFI callbacks alive.
      *
-     * @var array<int, \Sciter\Som\Asset>
+     * @var array<int, Asset>
      */
     private array $assets = [];
+
+    /** @var array<string, Asset> */
+    private array $namedAssets = [];
 
     public function __construct(?string $library = null)
     {
@@ -153,6 +157,8 @@ final class Runtime
          * 4. Release PHP references only after native shutdown.
          */
         $this->assets = [];
+
+        $this->namedAssets = [];
     }
 
     public function retainAsset(Asset $asset): void
@@ -169,5 +175,57 @@ final class Runtime
         foreach ($this->assets as $asset) {
             $asset->unregister();
         }
+    }
+
+    public function expose(string $name, array|object $methods): self
+    {
+        if ($name === '') {
+            throw new \InvalidArgumentException(
+                'Exposed asset name cannot be empty.'
+            );
+        }
+
+        if (isset($this->namedAssets[$name])) {
+            throw new \LogicException(
+                "SOM asset '{$name}' is already registered."
+            );
+        }
+
+        if (is_object($methods)) {
+            $methods = (new ExposedMethodResolver())->resolve($methods);
+        }
+
+        if ($methods === []) {
+            throw new \InvalidArgumentException(
+                'At least one method must be exposed.'
+            );
+        }
+
+        foreach ($methods as $method => $callback) {
+            if (
+                !is_string($method) ||
+                $method === '' ||
+                !is_callable($callback)
+            ) {
+                throw new \InvalidArgumentException(
+                    'Exposed methods must have non-empty string names and callable values.'
+                );
+            }
+        }
+
+        $this->initialize();
+
+        $asset = new Asset($this, $name);
+
+        foreach ($methods as $method => $callback) {
+            $asset->method($method, $callback);
+        }
+
+        $asset->register();
+
+        // Asset::register() already calls retainAsset().
+        $this->namedAssets[$name] = $asset;
+
+        return $this;
     }
 }

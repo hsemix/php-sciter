@@ -5,26 +5,31 @@ namespace Sciter;
 use FFI;
 use FFI\CData;
 use RuntimeException;
-use Sciter\Som\Asset;
-use Sciter\Som\ExposedMethodResolver;
 
 final class Window
 {
-    private const SW_MAIN = 1 << 7;
-
     private const WINDOW_SET_STATE = 1;
     private const WINDOW_STATE_SHOWN = 2;
 
+    private const SW_CHILD = 1 << 0;
+    private const SW_TITLEBAR = 1 << 1;
+    private const SW_RESIZEABLE = 1 << 2;
+    private const SW_CONTROLS = 1 << 3;
+    private const SW_MAIN = 1 << 7;
+
     private ?CData $handle = null;
 
-    /**
-     * SOM assets exposed through this window.
-     *
-     * Retain references to the assets for their lifetime.
-     *
-     * @var array<string, Asset>
-     */
-    private array $exposedAssets = [];
+
+    private const MAIN_WINDOW =
+    self::SW_TITLEBAR |
+        self::SW_RESIZEABLE |
+        self::SW_CONTROLS |
+        self::SW_MAIN;
+
+    private const SECONDARY_WINDOW =
+    self::SW_TITLEBAR |
+        self::SW_RESIZEABLE |
+        self::SW_CONTROLS;
 
     public function __construct(
         private Runtime $runtime,
@@ -32,6 +37,7 @@ final class Window
         private int $height = 600,
         private int $x = 100,
         private int $y = 100,
+        private bool $main = true
     ) {}
 
     public function create(): self
@@ -54,8 +60,12 @@ final class Window
 
         $create = $api->SciterCreateWindow;
 
-        $handle = $create(
-            self::SW_MAIN,
+        $flags = $this->main
+            ? self::MAIN_WINDOW
+            : self::SECONDARY_WINDOW;
+
+        $handle = ($api->SciterCreateWindow)(
+            $flags,
             FFI::addr($frame),
             null,
             null,
@@ -159,53 +169,7 @@ final class Window
      */
     public function expose(string $name, array|object $methods): self
     {
-        if ($name === '') {
-            throw new \InvalidArgumentException(
-                'Exposed asset name cannot be empty.'
-            );
-        }
-
-        if (isset($this->exposedAssets[$name])) {
-            throw new \LogicException(
-                "Asset '{$name}' is already exposed on this window."
-            );
-        }
-
-        // Convert an annotated PHP object into callable methods.
-        if (is_object($methods)) {
-            $methods = (new ExposedMethodResolver())->resolve($methods);
-        }
-
-        if ($methods === []) {
-            throw new \InvalidArgumentException(
-                'At least one method must be exposed.'
-            );
-        }
-
-        // Validate everything before creating the native asset.
-        foreach ($methods as $method => $callback) {
-            if (
-                !is_string($method) ||
-                $method === '' ||
-                !is_callable($callback)
-            ) {
-                throw new \InvalidArgumentException(
-                    'Exposed methods must have non-empty string names and callable values.'
-                );
-            }
-        }
-
-        $this->runtime->initialize();
-
-        $asset = new Asset($this->runtime, $name);
-
-        foreach ($methods as $method => $callback) {
-            $asset->method($method, $callback);
-        }
-
-        $asset->register();
-
-        $this->exposedAssets[$name] = $asset;
+        $this->runtime->expose($name, $methods);
 
         return $this;
     }
