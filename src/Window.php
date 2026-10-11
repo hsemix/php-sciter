@@ -5,6 +5,7 @@ namespace Sciter;
 use FFI;
 use FFI\CData;
 use RuntimeException;
+use Sciter\Som\Asset;
 
 final class Window
 {
@@ -14,6 +15,15 @@ final class Window
     private const WINDOW_STATE_SHOWN = 2;
 
     private ?CData $handle = null;
+
+    /**
+     * SOM assets exposed through this window.
+     *
+     * Retain references to the assets for their lifetime.
+     *
+     * @var array<string, Asset>
+     */
+    private array $exposedAssets = [];
 
     public function __construct(
         private Runtime $runtime,
@@ -127,5 +137,63 @@ final class Window
         $this->create();
 
         return $this->handle;
+    }
+
+    /**
+     * Expose PHP callbacks to Sciter JavaScript.
+     *
+     * Example:
+     *
+     * $window->expose('app', [
+     *     'greet' => fn (string $name) => "Hello, {$name}!",
+     *     'add' => fn (int $a, int $b) => $a + $b,
+     * ]);
+     *
+     * JavaScript:
+     *
+     * app.greet("Hamid");
+     * app.add(10, 20);
+     *
+     * @param array<string, callable> $methods
+     */
+    public function expose(string $name, array $methods): self
+    {
+        if ($name === '') {
+            throw new \InvalidArgumentException(
+                'Exposed asset name cannot be empty.'
+            );
+        }
+
+        if (isset($this->exposedAssets[$name])) {
+            throw new \LogicException(
+                "Asset '{$name}' is already exposed."
+            );
+        }
+
+        if ($methods === []) {
+            throw new \InvalidArgumentException(
+                'At least one method must be provided.'
+            );
+        }
+
+        $this->runtime->initialize();
+
+        $asset = new Asset($this->runtime, $name);
+
+        foreach ($methods as $method => $callback) {
+            if (!is_string($method) || !is_callable($callback)) {
+                throw new \InvalidArgumentException(
+                    'Exposed methods must be named callables.'
+                );
+            }
+
+            $asset->method($method, $callback);
+        }
+
+        $asset->register();
+
+        $this->exposedAssets[$name] = $asset;
+
+        return $this;
     }
 }
