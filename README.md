@@ -17,8 +17,16 @@ No Electron, no Node, no browser: PHP talks to the Sciter engine directly throug
 composer require hsemix/php-sciter
 ```
 
-The Sciter binaries for macOS, Linux and Windows ship in `bin/` and are picked automatically
-for the current platform. You can also point to your own build:
+The Sciter binaries ship in `bin/` and are picked automatically for the current OS and CPU.
+`Sciter\Native\LibraryResolver` searches, in order:
+
+1. `bin/<os>/<arch>/<library>`, e.g. `bin/linux/x64/libsciter.so`
+2. `bin/<os>/<library>`, e.g. the universal `bin/macos/libsciter.dylib` (Intel and Apple Silicon)
+3. `bin/<library>`
+4. `<library>` in the project root
+
+`<os>` is `macos`, `linux` or `windows`; `<arch>` is `x64`, `x86` or `arm64`.
+You can also point to your own build:
 
 ```php
 $runtime = new Sciter\Runtime('/path/to/libsciter.dylib');
@@ -152,13 +160,35 @@ $window->maximize();
 $window->fullscreen();
 $window->restore();
 $window->state();      // 0 closed, 1 hidden, 2 shown, 3 minimized, 4 maximized, 5 fullscreen
-
-$window->onClose(function (Sciter\Window $window): void {
-    echo "closed\n";
-});
+$window->isClosed();
+$window->isClosing();
 
 $window->close();
 ```
+
+Changing the state of a closing or closed window throws a `LogicException`.
+
+### Window events
+
+```php
+$id = $window->on('close', function (Sciter\Window $window): void {
+    echo "closed\n";
+});
+
+$window->once('minimize.requested', fn() => print("minimizing\n"));
+$window->off('close', $id);          // remove a listener
+
+$window->onClose(fn($w) => print("closed\n"));   // shorthand for on('close', ...)
+```
+
+| Event | Fired |
+|---|---|
+| `close` | After the native window is destroyed |
+| `show.requested`, `hide.requested` | After `show()` / `hide()` |
+| `minimize.requested`, `maximize.requested`, `restore.requested` | After the matching call |
+
+Every listener receives the `Window`. Registering a `close` listener on an already closed window
+throws. A listener that throws is logged and does not stop the other listeners.
 
 ## Examples
 
@@ -172,7 +202,8 @@ php examples/shared-data.php
 |---|---|
 | `expose.php`, `expose-object.php`, `expose-resolver.php` | Exposing arrays and `#[Expose]` objects |
 | `shared-data.php` | Assoc arrays and objects crossing the boundary |
-| `window-options.php`, `window-state.php`, `window-lifecycle.php` | Window options, state and close events |
+| `window-options.php`, `window-state.php`, `window-hide.php`, `window-minimize.php` | Window options and state control |
+| `window-lifecycle.php`, `window-events.php`, `event-dispatcher.php`, `event-once.php` | Close handling and the event system |
 | `multiple-windows.php`, `window-runtime.php` | More than one window |
 | `som-lifecycle.php`, `native-som-probe.php` | SOM reference counting and shutdown |
 
@@ -188,12 +219,28 @@ php examples/shared-data.php
 
 ```
 src/Runtime.php       Sciter init, event loop, shutdown, exposing PHP objects
-src/Window.php        Native windows and their lifecycle
+src/Window.php        Native windows, state and events
+src/WindowOptions.php Window creation options
+src/Events/           Small event dispatcher used by Window
+src/Native/           Locates the right Sciter library per OS and CPU
 src/Value.php         PHP <-> Sciter VALUE conversion
 src/Som/              SOM assets that make PHP callables visible to JS
-src/FFI/              C definitions loaded through PHP FFI
+src/FFI/              Loads include/sciter-ffi.h through PHP FFI
+include/sciter-ffi.h  C declarations of the Sciter API (ISciterAPI layout)
+tests/                PHPUnit suites (Unit, Integration)
 tests/native/         C++ probe used to verify SOM behaviour
 ```
+
+## Tests
+
+```bash
+composer install
+vendor/bin/phpunit                     # everything
+vendor/bin/phpunit --testsuite Unit    # no Sciter library needed
+```
+
+Integration tests load the real Sciter library and are skipped when FFI or the binary is
+unavailable.
 
 ## Licenses
 

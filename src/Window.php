@@ -4,8 +4,8 @@ namespace Sciter;
 
 use FFI;
 use FFI\CData;
-use LogicException;
 use RuntimeException;
+use Sciter\Events\EventDispatcher;
 
 final class Window
 {
@@ -51,6 +51,8 @@ final class Window
 
     /** @var array<callable> */
     private array $closeCallbacks = [];
+
+    private ?EventDispatcher $events = null;
 
     public function __construct(
         private Runtime $runtime,
@@ -144,8 +146,25 @@ final class Window
                         $this->closing = false;
                         $this->handle = null;
 
-                        $this->notifyClosed();
+                        $this->events()->emit('close', $this);
                     }
+                }
+
+                if ((int) $notification->code === 0x06) {
+                    echo "[Host] Posted notification received\n";
+
+                    $posted = $this->runtime->ffi()->cast(
+                        'SCN_POSTED_NOTIFICATION*',
+                        $notification
+                    );
+
+                    printf(
+                        "[Host] wparam=%d, lparam=%d\n",
+                        (int) $posted->wparam,
+                        (int) $posted->lparam
+                    );
+
+                    return 0;
                 }
             } catch (\Throwable $exception) {
                 error_log(
@@ -164,6 +183,26 @@ final class Window
         );
 
         return $this;
+    }
+
+    public function testPostedCallback(): void
+    {
+        if ($this->isClosed() || $this->isClosing()) {
+            throw new \LogicException(
+                'Cannot post a callback to a closed window.'
+            );
+        }
+
+        echo "[Test] Posting callback...\n";
+
+        $result = ($this->runtime->api()->SciterPostCallback)(
+            $this->handle,
+            123,
+            456,
+            1000
+        );
+
+        echo "[Test] PostCallback returned: {$result}\n";
     }
 
     public function loadHtml(string $html): self
@@ -236,38 +275,50 @@ final class Window
         return $this;
     }
 
-    public function show(): self
-    {
-        return $this->setState(self::WINDOW_STATE_SHOWN);
-    }
-
-    public function hide(): self
-    {
-        if ($this->handle === null) {
-            return $this;
-        }
-
-        return $this->setState(self::WINDOW_STATE_HIDDEN);
-    }
-
-    public function minimize(): self
-    {
-        return $this->setState(self::WINDOW_STATE_MINIMIZED);
-    }
-
-    public function maximize(): self
-    {
-        return $this->setState(self::WINDOW_STATE_MAXIMIZED);
-    }
-
     public function fullscreen(): self
     {
         return $this->setState(self::WINDOW_STATE_FULL_SCREEN);
     }
 
-    public function restore(): self
+
+    public function minimize(): void
     {
-        return $this->setState(self::WINDOW_STATE_SHOWN);
+        $this->requestState(
+            self::WINDOW_STATE_MINIMIZED,
+            'minimize.requested'
+        );
+    }
+
+    public function maximize(): void
+    {
+        $this->requestState(
+            self::WINDOW_STATE_MAXIMIZED,
+            'maximize.requested'
+        );
+    }
+
+    public function restore(): void
+    {
+        $this->requestState(
+            self::WINDOW_STATE_SHOWN,
+            'restore.requested'
+        );
+    }
+
+    public function hide(): void
+    {
+        $this->requestState(
+            self::WINDOW_STATE_HIDDEN,
+            'hide.requested'
+        );
+    }
+
+    public function show(): void
+    {
+        $this->requestState(
+            self::WINDOW_STATE_SHOWN,
+            'show.requested'
+        );
     }
 
     public function isClosed(): bool
@@ -323,13 +374,7 @@ final class Window
 
     public function onClose(callable $callback): self
     {
-        if ($this->closed) {
-            throw new \LogicException(
-                'Cannot register a close callback on a closed window.'
-            );
-        }
-
-        $this->closeCallbacks[] = $callback;
+        $this->on('close', $callback);
 
         return $this;
     }
@@ -349,5 +394,50 @@ final class Window
                 );
             }
         }
+    }
+
+    private function events(): EventDispatcher
+    {
+        return $this->events ??= new EventDispatcher();
+    }
+
+    public function on(string $event, callable $listener): int
+    {
+        if ($event === 'close' && $this->closed) {
+            throw new \LogicException(
+                'Cannot register a close listener on a closed window.'
+            );
+        }
+
+        return $this->events()->on($event, $listener);
+    }
+
+    public function off(string $event, int $listenerId): bool
+    {
+        return $this->events()->off($event, $listenerId);
+    }
+
+    public function once(string $event, callable $listener): int
+    {
+        if ($event === 'close' && $this->closed) {
+            throw new \LogicException(
+                'Cannot register a close listener on a closed window.'
+            );
+        }
+
+        return $this->events()->once($event, $listener);
+    }
+
+    private function requestState(int $state, string $event): void
+    {
+        if ($this->closed || $this->closing) {
+            throw new \LogicException(
+                'Cannot change the state of a closing or closed window.'
+            );
+        }
+
+        $this->setState($state);
+
+        $this->events()->emit($event, $this);
     }
 }

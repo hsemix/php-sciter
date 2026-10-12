@@ -6,6 +6,7 @@ use FFI;
 use FFI\CData;
 use RuntimeException;
 use Sciter\FFI\SciterApi;
+use Sciter\Native\LibraryResolver;
 use Sciter\Som\Asset;
 use Sciter\Som\ExposedMethodResolver;
 
@@ -106,17 +107,7 @@ final class Runtime
 
     private function resolveLibrary(): string
     {
-        $root = dirname(__DIR__);
-
-        return match (PHP_OS_FAMILY) {
-            'Darwin' => $root . '/bin/macos/libsciter.dylib',
-            'Linux' => $root . '/bin/linux/libsciter.so',
-            'Windows' => $root . '/bin/windows/sciter.dll',
-
-            default => throw new RuntimeException(
-                'Unsupported platform: ' . PHP_OS_FAMILY
-            ),
-        };
+        return LibraryResolver::resolve();
     }
 
     public function shutdown(): void
